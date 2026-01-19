@@ -321,24 +321,15 @@ async def upload_document(
                 embeddings=[]
             )
     
-    # Add background task
+    # Always process in background to prevent timeout
+    import threading
+    thread = threading.Thread(target=process_document)
+    thread.daemon = True
+    thread.start()
+    
+    # Also add to FastAPI background tasks if available
     if background_tasks:
         background_tasks.add_task(process_document)
-    else:
-        # If no background_tasks, process synchronously but with timeout handling
-        import asyncio
-        try:
-            loop = asyncio.get_event_loop()
-            await asyncio.wait_for(
-                asyncio.to_thread(process_document),
-                timeout=30.0  # 30 second timeout
-            )
-        except asyncio.TimeoutError:
-            # Return immediately, process in background
-            import threading
-            thread = threading.Thread(target=process_document)
-            thread.daemon = True
-            thread.start()
     
     # Return immediately
     return {
