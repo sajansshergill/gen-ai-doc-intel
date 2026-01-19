@@ -231,82 +231,126 @@ async def upload_document(
     Returns doc_id and status immediately, processes in background.
     """
     doc_id = str(uuid.uuid4())
+    
+    # Validate filename
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Filename is required")
+    
     doc_type = determine_doc_type(file.filename)
     
     if doc_type == DocumentType.UNKNOWN:
         raise HTTPException(status_code=400, detail=f"Unsupported file type: {file.filename}")
     
-    # Save file
-    file_path = UPLOAD_DIR / f"{doc_id}_{file.filename}"
-    with open(file_path, "wb") as f:
+    # Check file size (limit to 10MB for free tier)
+    file_size = 0
+    try:
+        # Save file
+        file_path = UPLOAD_DIR / f"{doc_id}_{file.filename}"
         content = await file.read()
-        f.write(content)
+        file_size = len(content)
+        
+        if file_size > 10 * 1024 * 1024:  # 10MB limit
+            raise HTTPException(status_code=400, detail="File size exceeds 10MB limit")
+        
+        with open(file_path, "wb") as f:
+            f.write(content)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"File upload error: {str(e)}")
     
     # Create RawDoc artifact
     raw_doc = RawDoc(
         doc_id=doc_id,
         filename=file.filename,
         file_path=str(file_path),
-        file_size=len(content),
+        file_size=file_size,
         content_type=file.content_type or "application/pdf",
         uploaded_at=datetime.now(),
         doc_type=doc_type
     )
     
-    # Process document (can be async in production)
-    try:
-        processed = get_document_processor().process(raw_doc)
-        pages = processed["pages"]
-        blocks = processed["blocks"]
-        chunks = processed["chunks"]
-        
-        # Generate embeddings (batch)
-        embeddings = get_batch_processor().process_chunks(chunks, doc_id)
-        
-        # Add to vector store
-        vectors = [e.embedding for e in embeddings]
-        metadatas = [
-            {
-                "doc_id": doc_id,
-                "filename": file.filename,
-                "chunk_id": c.chunk_id,
-                "page": c.page_number,
-                "text": c.text,
-            }
-            for c in chunks
-        ]
-        get_store().add(vectors, metadatas)
-        
-        # Create DocumentArtifacts
-        doc_artifacts = DocumentArtifacts(
-            raw_doc=raw_doc,
-            pages=pages,
-            blocks=blocks,
-            chunks=chunks,
-            embeddings=embeddings
-        )
-        document_registry[doc_id] = doc_artifacts
-        
-        # Extract tables if PDF
-        tables = []
-        if doc_type == DocumentType.PDF:
-            try:
-                tables_data = extract_tables_from_pdf(str(file_path))
-                tables = tables_data
-            except Exception as e:
-                print(f"Table extraction error: {e}")
-        
-        return {
-            "doc_id": doc_id,
-            "status": "processed",
-            "filename": file.filename,
-            "pages": len(pages),
-            "chunks": len(chunks),
-            "tables": len(tables),
-            "extraction_method": pages[0].extraction_method.value if pages else "unknown"
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Processing error: {str(e)}")
+    # Process document in background to avoid timeout
+    def process_document():
+        try:
+            processed = get_document_processor().process(raw_doc)
+            pages = processed["pages"]
+            blocks = processed["blocks"]
+            chunks = processed["chunks"]
+            
+            # Generate embeddings (batch)
+            embeddings = get_batch_processor().process_chunks(chunks, doc_id)
+            
+            # Add to vector store
+            vectors = [e.embedding for e in embeddings]
+            metadatas = [
+                {
+                    "doc_id": doc_id,
+                    "filename": file.filename,
+                    "chunk_id": c.chunk_id,
+                    "page": c.page_number,
+                    "text": c.text,
+                }
+                for c in chunks
+            ]
+            get_store().add(vectors, metadatas)
+            
+            # Create DocumentArtifacts
+            doc_artifacts = DocumentArtifacts(
+                raw_doc=raw_doc,
+                pages=pages,
+                blocks=blocks,
+                chunks=chunks,
+                embeddings=embeddings
+            )
+            document_registry[doc_id] = doc_artifacts
+            
+            # Extract tables if PDF
+            if doc_type == DocumentType.PDF:
+                try:
+                    tables_data = extract_tables_from_pdf(str(file_path))
+                    # Store tables count in registry if needed
+                except Exception as e:
+                    print(f"Table extraction error: {e}")
+        except Exception as e:
+            print(f"Background processing error for {doc_id}: {e}")
+            # Store error state
+            document_registry[doc_id] = DocumentArtifacts(
+                raw_doc=raw_doc,
+                pages=[],
+                blocks=[],
+                chunks=[],
+                embeddings=[]
+            )
+    
+    # Add background task
+    if background_tasks:
+        background_tasks.add_task(process_document)
+    else:
+        # If no background_tasks, process synchronously but with timeout handling
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+            await asyncio.wait_for(
+                asyncio.to_thread(process_document),
+                timeout=30.0  # 30 second timeout
+            )
+        except asyncio.TimeoutError:
+            # Return immediately, process in background
+            import threading
+            thread = threading.Thread(target=process_document)
+            thread.daemon = True
+            thread.start()
+    
+    # Return immediately
+    return {
+        "doc_id": doc_id,
+        "status": "uploaded",
+        "filename": file.filename,
+        "pages": 0,  # Will be updated after processing
+        "chunks": 0,  # Will be updated after processing
+        "tables": 0,
+        "extraction_method": "processing",
+        "message": "Document uploaded successfully. Processing in background..."
+    }
 
 
 @app.get("/v1/documents/{doc_id}")
