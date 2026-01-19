@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+venv/
+env/
+.venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env
+.env.local
+
+# Data directories (keep structure, ignore contents)
+data/uploads/*
+!data/uploads/.gitkeep
+data/index/*
+!data/index/.gitkeep
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.bak

@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GenAI Document Intelligence Platform</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo-section">
+                    <div class="logo-icon">📄</div>
+                    <div>
+                        <h1>GenAI Document Intelligence</h1>
+                        <p class="subtitle">Production-Grade Multimodal Document Understanding</p>
+                    </div>
+                </div>
+                <div class="status-indicator">
+                    <span class="status-dot"></span>
+                    <span>System Operational</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Feature Showcase Banner -->
+            <section class="feature-banner">
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <div class="feature-icon">📄</div>
+                        <h3>Document Upload</h3>
+                        <p>PDF, Images, Scanned Docs</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">👁️</div>
+                        <h3>OCR Processing</h3>
+                        <p>Tesseract Integration</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">📊</div>
+                        <h3>Table Extraction</h3>
+                        <p>Structured Data Parsing</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🤖</div>
+                        <h3>LLM Reasoning</h3>
+                        <p>OpenAI / Gemini</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🔎</div>
+                        <h3>Vector Search</h3>
+                        <p>FAISS Semantic Retrieval</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">✓</div>
+                        <h3>Evaluation</h3>
+                        <p>Quality Guardrails</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Pipeline Visualization -->
+            <section class="pipeline-section">
+                <h2>Document Processing Pipeline</h2>
+                <div class="pipeline-flow">
+                    <div class="pipeline-step">
+                        <div class="step-icon">📄</div>
+                        <div class="step-label">RawDoc</div>
+                    </div>
+                    <div class="pipeline-arrow">→</div>
+                    <div class="pipeline-step">
+                        <div class="step-icon">📑</div>
+                        <div class="step-label">Page</div>
+                    </div>
+                    <div class="pipeline-arrow">→</div>
+                    <div class="pipeline-step">
+                        <div class="step-icon">📦</div>
+                        <div class="step-label">Block</div>
+                    </div>
+                    <div class="pipeline-arrow">→</div>
+                    <div class="pipeline-step">
+                        <div class="step-icon">✂️</div>
+                        <div class="step-label">Chunk</div>
+                    </div>
+                    <div class="pipeline-arrow">→</div>
+                    <div class="pipeline-step">
+                        <div class="step-icon">🔢</div>
+                        <div class="step-label">Embedding</div>
+                    </div>
+                    <div class="pipeline-arrow">→</div>
+                    <div class="pipeline-step">
+                        <div class="step-icon">💾</div>
+                        <div class="step-label">FAISS Index</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Two Column Layout -->
+            <div class="content-grid">
+                <!-- Left Column: Document Management -->
+                <div class="column">
+                    <section class="card">
+                        <div class="card-header">
+                            <h2>📤 Upload Documents</h2>
+                            <span class="badge">Batch Processing</span>
+                        </div>
+                        <div class="upload-area" id="uploadArea">
+                            <input type="file" id="fileInput" accept=".pdf,.png,.jpg,.jpeg,.tiff" style="display: none;">
+                            <div class="upload-content">
+                                <div class="upload-icon">📄</div>
+                                <p>Drag & drop files here or <a href="#" onclick="document.getElementById('fileInput').click(); return false;">browse</a></p>
+                                <p class="upload-hint">Supports PDF, PNG, JPG, TIFF</p>
+                            </div>
+                        </div>
+                        <div id="uploadProgress" class="progress-container" style="display: none;">
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="progressFill"></div>
+                            </div>
+                            <p class="progress-text" id="progressText">Processing...</p>
+                        </div>
+                        <div id="uploadResult" class="upload-result"></div>
+                    </section>
+
+                    <section class="card">
+                        <div class="card-header">
+                            <h2>📚 Document Library</h2>
+                            <button class="btn-secondary" onclick="loadDocuments()">Refresh</button>
+                        </div>
+                        <div id="documentList" class="document-list">
+                            <div class="loading">Loading documents...</div>
+                        </div>
+                    </section>
+                </div>
+
+                <!-- Right Column: Query & Results -->
+                <div class="column">
+                    <section class="card">
+                        <div class="card-header">
+                            <h2>🔍 Query Documents</h2>
+                            <span class="badge">RAG + LLM</span>
+                        </div>
+                        <div class="query-section">
+                            <div class="query-input-group">
+                                <textarea 
+                                    id="queryInput" 
+                                    class="query-input" 
+                                    placeholder="Ask a question about your documents...&#10;Example: 'Summarize all financial risks mentioned across documents'"
+                                    rows="3"
+                                ></textarea>
+                                <div class="query-options">
+                                    <label>
+                                        <input type="checkbox" id="useLLM" checked> Use LLM Reasoning
+                                    </label>
+                                    <select id="topKSelect">
+                                        <option value="3">Top 3</option>
+                                        <option value="5" selected>Top 5</option>
+                                        <option value="10">Top 10</option>
+                                    </select>
+                                </div>
+                                <button class="btn-primary" onclick="executeQuery()">
+                                    <span>🔍</span> Query
+                                </button>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="card" id="resultsCard" style="display: none;">
+                        <div class="card-header">
+                            <h2>📊 Query Results</h2>
+                            <div class="confidence-badge" id="confidenceBadge"></div>
+                        </div>
+                        <div id="queryResults" class="results-container">
+                            <!-- Results will be populated here -->
+                        </div>
+                    </section>
+
+                    <section class="card" id="evaluationCard" style="display: none;">
+                        <div class="card-header">
+                            <h2>✅ Quality Evaluation</h2>
+                            <span class="badge badge-success" id="evalStatus">Passed</span>
+                        </div>
+                        <div id="evaluationResults" class="evaluation-container">
+                            <!-- Evaluation metrics will be shown here -->
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+            <!-- Architecture Showcase -->
+            <section class="architecture-section">
+                <h2>System Architecture</h2>
+                <div class="architecture-diagram">
+                    <div class="arch-layer">
+                        <div class="arch-box">FastAPI REST API</div>
+                        <div class="arch-box">Swagger UI</div>
+                        <div class="arch-box">Web Frontend</div>
+                    </div>
+                    <div class="arch-arrow">↓</div>
+                    <div class="arch-layer">
+                        <div class="arch-box">Document Processor</div>
+                        <div class="arch-box">OCR Engine</div>
+                        <div class="arch-box">Table Extractor</div>
+                    </div>
+                    <div class="arch-arrow">↓</div>
+                    <div class="arch-layer">
+                        <div class="arch-box">Embedding Pipeline</div>
+                        <div class="arch-box">FAISS Vector Store</div>
+                        <div class="arch-box">LLM Reasoning</div>
+                    </div>
+                    <div class="arch-arrow">↓</div>
+                    <div class="arch-layer">
+                        <div class="arch-box">Evaluation Harness</div>
+                        <div class="arch-box">Schema Validation</div>
+                        <div class="arch-box">Structured Output</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Stats Dashboard -->
+            <section class="stats-section">
+                <h2>System Statistics</h2>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value" id="totalDocs">0</div>
+                        <div class="stat-label">Documents Processed</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="totalChunks">0</div>
+                        <div class="stat-label">Chunks Indexed</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="totalQueries">0</div>
+                        <div class="stat-label">Queries Executed</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="avgConfidence">0%</div>
+                        <div class="stat-label">Avg Confidence</div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>GenAI Document Intelligence Platform v1.0.0 | Built with FastAPI, FAISS, and LLMs</p>
+            <p class="footer-links">
+                <a href="/docs" target="_blank">API Documentation</a> |
+                <a href="/redoc" target="_blank">ReDoc</a> |
+                <a href="/health" target="_blank">Health Check</a>
+            </p>
+        </footer>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
