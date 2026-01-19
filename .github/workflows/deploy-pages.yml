@@ -1,0 +1,54 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Copy static files
+        run: |
+          mkdir -p _site
+          cp -r apps/web/static/* _site/
+          # Fix paths for GitHub Pages (remove /static prefix)
+          cd _site
+          # Update CSS and JS paths in index.html to work on GitHub Pages
+          sed -i.bak 's|href="/static/styles.css"|href="styles.css"|g' index.html
+          sed -i.bak 's|src="/static/app.js"|src="app.js"|g' index.html
+          rm -f index.html.bak
+          # Create config.js with API URL (set via repository secrets)
+          echo "window.API_BASE_URL = '${{ secrets.API_BASE_URL || 'https://your-api-url.herokuapp.com' }}';" > config.js
+          # Inject config before app.js
+          sed -i.bak 's|<script src="app.js"></script>|<script src="config.js"></script>\n    <script src="app.js"></script>|' index.html
+          rm -f index.html.bak
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '_site'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

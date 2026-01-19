@@ -12,6 +12,7 @@ from datetime import datetime
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from pypdf import PdfReader
 from pathlib import Path
@@ -55,6 +56,27 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# CORS middleware for GitHub Pages and local development
+# Allow all origins in development, restrict in production via environment variable
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+if allowed_origins == ["*"]:
+    # For GitHub Pages, we need to allow all origins or use a function
+    # In production, set ALLOWED_ORIGINS to specific domains
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],  # Allow all for GitHub Pages compatibility
+        allow_credentials=False,  # Can't use credentials with wildcard
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=allowed_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 # Request Models
 class QueryRequest(BaseModel):

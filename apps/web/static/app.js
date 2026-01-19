@@ -1,5 +1,6 @@
 // GenAI Document Intelligence Platform - Frontend Application
-const API_BASE = window.location.origin;
+// API Base URL - defaults to same origin, can be overridden via window.API_BASE_URL
+const API_BASE = window.API_BASE_URL || window.location.origin;
 
 // State
 let stats = {
