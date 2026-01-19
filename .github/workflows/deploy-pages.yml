@@ -6,6 +6,7 @@ on:
       - main
   workflow_dispatch:
 
+# Allow only one concurrent deployment
 permissions:
   contents: read
   pages: write
@@ -16,10 +17,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -28,36 +26,67 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
-      - name: Copy static files
+      - name: Build static site
         run: |
+          # Create output directory
           mkdir -p _site
+          
+          # Copy all static files
           cp -r apps/web/static/* _site/
-          # Fix paths for GitHub Pages (remove /static prefix)
+          
+          # Navigate to site directory
           cd _site
-          # Update CSS and JS paths in index.html to work on GitHub Pages
+          
+          # Fix CSS path in index.html
           sed -i 's|href="/static/styles.css"|href="styles.css"|g' index.html
+          
+          # Fix JS path in index.html  
           sed -i 's|src="/static/app.js"|src="app.js"|g' index.html
-          # Create config.js with API URL (set via repository secrets)
-          echo "window.API_BASE_URL = '${{ secrets.API_BASE_URL || 'https://your-api-url.herokuapp.com' }}';" > config.js
-          # Inject config script before app.js using a more reliable method
-          python3 << 'EOF'
-          import re
+          
+          # Create config.js for API URL
+          cat > config.js << 'CONFIGEOF'
+          // API Configuration
+          // This can be overridden by setting API_BASE_URL secret in GitHub
+          window.API_BASE_URL = window.API_BASE_URL || 'https://your-api-url.herokuapp.com';
+          CONFIGEOF
+          
+          # Inject config.js before app.js using Python for reliability
+          python3 << 'PYTHONEOF'
           with open('index.html', 'r') as f:
               content = f.read()
-          # Replace the app.js script tag with config.js + app.js
-          content = content.replace(
-              '<script src="app.js"></script>',
-              '<script src="config.js"></script>\n    <script src="app.js"></script>'
-          )
-          with open('index.html', 'w') as f:
-              f.write(content)
-          EOF
+          
+          # Find the app.js script tag and inject config.js before it
+          if '<script src="app.js"></script>' in content:
+              content = content.replace(
+                  '<script src="app.js"></script>',
+                  '<script src="config.js"></script>\n    <script src="app.js"></script>'
+              )
+              with open('index.html', 'w') as f:
+                  f.write(content)
+              print("✅ Successfully injected config.js")
+          else:
+              print("⚠️ Warning: Could not find app.js script tag")
+          PYTHONEOF
+          
+          # Verify files exist
+          echo "📁 Files in _site:"
+          ls -la
+          echo ""
+          echo "📄 index.html content check:"
+          grep -E "(styles\.css|app\.js|config\.js)" index.html || echo "⚠️ Warning: Could not find expected script/link tags"
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: '_site'
 
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
