@@ -102,10 +102,21 @@ async function uploadFile(file) {
         loadStats();
     } catch (error) {
         progressContainer.style.display = 'none';
+        console.error('Upload error:', error);
+        const errorMsg = error.message || 'Unknown error';
+        const isApiUnavailable = errorMsg.includes('Failed to fetch') || errorMsg.includes('NetworkError') || errorMsg.includes('not available');
+        
         uploadResult.innerHTML = `
             <div style="background: #ffebee; border-left-color: #ea4335; padding: 1rem; border-radius: 8px; border-left: 4px solid #ea4335;">
-                <h4 style="color: #ea4335;">❌ Upload Failed</h4>
-                <p>${error.message}</p>
+                <h4 style="color: #ea4335; margin: 0 0 0.5rem 0;">❌ Upload Failed</h4>
+                <p style="margin: 0 0 0.5rem 0;">${errorMsg}</p>
+                ${isApiUnavailable ? `
+                    <p style="margin: 0.5rem 0 0 0; font-size: 0.9rem; color: #666;">
+                        <strong>Backend API not available.</strong><br>
+                        Current API URL: ${API_BASE}<br>
+                        Please deploy the backend API or configure API_BASE_URL.
+                    </p>
+                ` : ''}
             </div>
         `;
     }
@@ -118,9 +129,22 @@ async function loadDocuments() {
     
     try {
         const response = await fetch(`${API_BASE}/v1/documents`);
+        
+        if (!response.ok) {
+            if (response.status === 404 || response.status === 0) {
+                throw new Error('Backend API not available. Please deploy the backend API or configure API_BASE_URL.');
+            }
+            throw new Error(`API error: ${response.status} ${response.statusText}`);
+        }
+        
         const data = await response.json();
         
-        if (data.documents.length === 0) {
+        // Handle case where API returns error format
+        if (data.error || data.detail) {
+            throw new Error(data.error || data.detail || 'Unknown API error');
+        }
+        
+        if (!data.documents || data.documents.length === 0) {
             documentList.innerHTML = '<div class="loading">No documents uploaded yet. Upload your first document above!</div>';
             return;
         }
@@ -140,7 +164,18 @@ async function loadDocuments() {
         stats.totalDocs = data.documents.length;
         updateStats();
     } catch (error) {
-        documentList.innerHTML = `<div class="loading">Error loading documents: ${error.message}</div>`;
+        console.error('Error loading documents:', error);
+        const errorMsg = error.message || 'Unknown error';
+        documentList.innerHTML = `
+            <div style="padding: 1rem; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px;">
+                <h4 style="margin: 0 0 0.5rem 0; color: #856404;">⚠️ Backend API Not Available</h4>
+                <p style="margin: 0; color: #856404; font-size: 0.9rem;">${errorMsg}</p>
+                <p style="margin: 0.5rem 0 0 0; color: #856404; font-size: 0.85rem;">
+                    <strong>Current API URL:</strong> ${API_BASE}<br>
+                    <strong>Solution:</strong> Deploy the backend API (see DEPLOYMENT.md) or set API_BASE_URL secret in GitHub.
+                </p>
+            </div>
+        `;
     }
 }
 

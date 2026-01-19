@@ -44,10 +44,11 @@ jobs:
           sed -i 's|src="/static/app.js"|src="app.js"|g' index.html
           
           # Create config.js for API URL
-          cat > config.js << 'CONFIGEOF'
+          # Use secret if available, otherwise use placeholder that will show helpful error
+          cat > config.js << CONFIGEOF
           // API Configuration
-          // This can be overridden by setting API_BASE_URL secret in GitHub
-          window.API_BASE_URL = window.API_BASE_URL || 'https://your-api-url.herokuapp.com';
+          // Set API_BASE_URL secret in GitHub Settings → Secrets → Actions to configure
+          window.API_BASE_URL = '${{ secrets.API_BASE_URL }}' || 'https://your-api-url.herokuapp.com';
           CONFIGEOF
           
           # Inject config.js before app.js using Python for reliability
