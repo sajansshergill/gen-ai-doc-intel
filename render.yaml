@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: gen-ai-doc-intel-api
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn apps.api.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11
+      - key: LLM_PROVIDER
+        value: openai
+    # Optional: Add your API keys via Render dashboard
+    # OPENAI_API_KEY: (set in dashboard)
+    # GEMINI_API_KEY: (set in dashboard)
