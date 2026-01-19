@@ -35,14 +35,23 @@ jobs:
           # Fix paths for GitHub Pages (remove /static prefix)
           cd _site
           # Update CSS and JS paths in index.html to work on GitHub Pages
-          sed -i.bak 's|href="/static/styles.css"|href="styles.css"|g' index.html
-          sed -i.bak 's|src="/static/app.js"|src="app.js"|g' index.html
-          rm -f index.html.bak
+          sed -i 's|href="/static/styles.css"|href="styles.css"|g' index.html
+          sed -i 's|src="/static/app.js"|src="app.js"|g' index.html
           # Create config.js with API URL (set via repository secrets)
           echo "window.API_BASE_URL = '${{ secrets.API_BASE_URL || 'https://your-api-url.herokuapp.com' }}';" > config.js
-          # Inject config before app.js
-          sed -i.bak 's|<script src="app.js"></script>|<script src="config.js"></script>\n    <script src="app.js"></script>|' index.html
-          rm -f index.html.bak
+          # Inject config script before app.js using a more reliable method
+          python3 << 'EOF'
+          import re
+          with open('index.html', 'r') as f:
+              content = f.read()
+          # Replace the app.js script tag with config.js + app.js
+          content = content.replace(
+              '<script src="app.js"></script>',
+              '<script src="config.js"></script>\n    <script src="app.js"></script>'
+          )
+          with open('index.html', 'w') as f:
+              f.write(content)
+          EOF
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
