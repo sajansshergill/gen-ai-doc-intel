@@ -220,6 +220,15 @@ def health():
         }
     }
 
+@app.post("/v1/test-upload")
+async def test_upload():
+    """Simple test endpoint to verify upload connectivity."""
+    return {
+        "status": "ok",
+        "message": "Upload endpoint is reachable",
+        "cors": "enabled"
+    }
+
 
 @app.post("/v1/documents")
 async def upload_document(
