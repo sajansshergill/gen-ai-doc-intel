@@ -239,21 +239,18 @@ async def upload_document(
     Upload and process a document.
     Returns doc_id and status immediately, processes in background.
     """
-    doc_id = str(uuid.uuid4())
-    
-    # Validate filename
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="Filename is required")
-    
-    doc_type = determine_doc_type(file.filename)
-    
-    if doc_type == DocumentType.UNKNOWN:
-        raise HTTPException(status_code=400, detail=f"Unsupported file type: {file.filename}")
-    
-    # Check file size (limit to 10MB for free tier)
-    file_size = 0
     try:
-        # Save file
+        # Validate filename
+        if not file.filename:
+            raise HTTPException(status_code=400, detail="Filename is required")
+        
+        doc_id = str(uuid.uuid4())
+        doc_type = determine_doc_type(file.filename)
+        
+        if doc_type == DocumentType.UNKNOWN:
+            raise HTTPException(status_code=400, detail=f"Unsupported file type: {file.filename}")
+        
+        # Save file FIRST - this is the critical part
         file_path = UPLOAD_DIR / f"{doc_id}_{file.filename}"
         content = await file.read()
         file_size = len(content)
@@ -261,112 +258,112 @@ async def upload_document(
         if file_size > 10 * 1024 * 1024:  # 10MB limit
             raise HTTPException(status_code=400, detail="File size exceeds 10MB limit")
         
+        # Write file immediately
         with open(file_path, "wb") as f:
             f.write(content)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"File upload error: {str(e)}")
-    
-    # Create RawDoc artifact
-    raw_doc = RawDoc(
-        doc_id=doc_id,
-        filename=file.filename,
-        file_path=str(file_path),
-        file_size=file_size,
-        content_type=file.content_type or "application/pdf",
-        uploaded_at=datetime.now(),
-        doc_type=doc_type
-    )
-    
-    # Store basic document info immediately
-    document_registry[doc_id] = DocumentArtifacts(
-        raw_doc=raw_doc,
-        pages=[],
-        blocks=[],
-        chunks=[],
-        embeddings=[]
-    )
-    
-    # Process document in background to avoid timeout
-    def process_document():
-        try:
-            import traceback
-            print(f"Starting background processing for {doc_id}")
-            
-            processed = get_document_processor().process(raw_doc)
-            pages = processed["pages"]
-            blocks = processed["blocks"]
-            chunks = processed["chunks"]
-            
-            print(f"Processed {len(pages)} pages, {len(chunks)} chunks for {doc_id}")
-            
-            # Generate embeddings (batch)
+        
+        # Create RawDoc artifact
+        raw_doc = RawDoc(
+            doc_id=doc_id,
+            filename=file.filename,
+            file_path=str(file_path),
+            file_size=file_size,
+            content_type=file.content_type or "application/pdf",
+            uploaded_at=datetime.now(),
+            doc_type=doc_type
+        )
+        
+        # Store basic document info immediately
+        document_registry[doc_id] = DocumentArtifacts(
+            raw_doc=raw_doc,
+            pages=[],
+            blocks=[],
+            chunks=[],
+            embeddings=[]
+        )
+        
+        # Return SUCCESS immediately - don't wait for anything
+        response_data = {
+            "doc_id": doc_id,
+            "status": "uploaded",
+            "filename": file.filename,
+            "pages": 0,
+            "chunks": 0,
+            "tables": 0,
+            "extraction_method": "processing",
+            "message": "Document uploaded successfully. Processing in background..."
+        }
+        
+        # Process in background AFTER returning response
+        def process_document():
             try:
-                embeddings = get_batch_processor().process_chunks(chunks, doc_id)
-                print(f"Generated {len(embeddings)} embeddings for {doc_id}")
+                import traceback
+                print(f"[{doc_id}] Starting background processing")
                 
-                # Add to vector store
-                vectors = [e.embedding for e in embeddings]
-                metadatas = [
-                    {
-                        "doc_id": doc_id,
-                        "filename": file.filename,
-                        "chunk_id": c.chunk_id,
-                        "page": c.page_number,
-                        "text": c.text[:500],  # Limit text length for metadata
-                    }
-                    for c in chunks
-                ]
-                get_store().add(vectors, metadatas)
-                print(f"Added to vector store for {doc_id}")
+                processed = get_document_processor().process(raw_doc)
+                pages = processed["pages"]
+                blocks = processed["blocks"]
+                chunks = processed["chunks"]
+                
+                print(f"[{doc_id}] Processed {len(pages)} pages, {len(chunks)} chunks")
+                
+                # Generate embeddings (batch)
+                try:
+                    embeddings = get_batch_processor().process_chunks(chunks, doc_id)
+                    print(f"[{doc_id}] Generated {len(embeddings)} embeddings")
+                    
+                    # Add to vector store
+                    vectors = [e.embedding for e in embeddings]
+                    metadatas = [
+                        {
+                            "doc_id": doc_id,
+                            "filename": file.filename,
+                            "chunk_id": c.chunk_id,
+                            "page": c.page_number,
+                            "text": c.text[:500],
+                        }
+                        for c in chunks
+                    ]
+                    get_store().add(vectors, metadatas)
+                    print(f"[{doc_id}] Added to vector store")
+                except Exception as e:
+                    print(f"[{doc_id}] Embedding error: {e}")
+                    traceback.print_exc()
+                    embeddings = []
+                
+                # Update registry
+                doc_artifacts = DocumentArtifacts(
+                    raw_doc=raw_doc,
+                    pages=pages,
+                    blocks=blocks,
+                    chunks=chunks,
+                    embeddings=embeddings
+                )
+                document_registry[doc_id] = doc_artifacts
+                print(f"[{doc_id}] Processing complete")
+                
             except Exception as e:
-                print(f"Embedding/vector store error for {doc_id}: {e}")
+                import traceback
+                print(f"[{doc_id}] Processing error: {e}")
                 traceback.print_exc()
-                embeddings = []
-            
-            # Create DocumentArtifacts
-            doc_artifacts = DocumentArtifacts(
-                raw_doc=raw_doc,
-                pages=pages,
-                blocks=blocks,
-                chunks=chunks,
-                embeddings=embeddings
-            )
-            document_registry[doc_id] = doc_artifacts
-            print(f"Completed processing for {doc_id}")
-            
-        except Exception as e:
-            import traceback
-            print(f"Background processing error for {doc_id}: {e}")
-            traceback.print_exc()
-            # Keep basic document info even if processing fails
-            document_registry[doc_id] = DocumentArtifacts(
-                raw_doc=raw_doc,
-                pages=[],
-                blocks=[],
-                chunks=[],
-                embeddings=[]
-            )
-    
-    # Always process in background to prevent timeout
-    import threading
-    thread = threading.Thread(target=process_document, daemon=True)
-    thread.start()
-    
-    # Also add to FastAPI background tasks if available
-    if background_tasks:
-        background_tasks.add_task(process_document)
-    
-    # Return immediately - file is saved, processing happens in background
-    return {
-        "doc_id": doc_id,
-        "status": "uploaded",
-        "filename": file.filename,
-        "pages": 0,  # Will be updated after processing
-        "chunks": 0,  # Will be updated after processing
-        "tables": 0,
-        "extraction_method": "processing",
-        "message": "Document uploaded successfully. Processing in background..."
-    }
+        
+        # Start background processing
+        import threading
+        thread = threading.Thread(target=process_document, daemon=True)
+        thread.start()
+        
+        if background_tasks:
+            background_tasks.add_task(process_document)
+        
+        # Return immediately
+        return response_data
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Upload error: {str(e)}")
 
 
 @app.get("/v1/documents/{doc_id}")
