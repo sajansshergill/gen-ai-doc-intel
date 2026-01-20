@@ -298,8 +298,10 @@ async def upload_document(
         def process_document():
             try:
                 import traceback
+                import gc  # Garbage collection for memory management
                 print(f"[{doc_id}] Starting background processing")
                 
+                # Process document
                 processed = get_document_processor().process(raw_doc)
                 pages = processed["pages"]
                 blocks = processed["blocks"]
@@ -307,12 +309,32 @@ async def upload_document(
                 
                 print(f"[{doc_id}] Processed {len(pages)} pages, {len(chunks)} chunks")
                 
-                # Generate embeddings (batch)
+                # Limit chunks to prevent memory issues on free tier
+                max_chunks = 50  # Limit for free tier
+                if len(chunks) > max_chunks:
+                    print(f"[{doc_id}] Limiting chunks from {len(chunks)} to {max_chunks} for memory")
+                    chunks = chunks[:max_chunks]
+                
+                # Force garbage collection before embeddings
+                gc.collect()
+                
+                # Generate embeddings (batch) - with memory optimization
                 try:
-                    embeddings = get_batch_processor().process_chunks(chunks, doc_id)
+                    # Process embeddings in smaller batches
+                    batch_size = min(10, len(chunks))
+                    all_embeddings = []
+                    
+                    for i in range(0, len(chunks), batch_size):
+                        chunk_batch = chunks[i:i + batch_size]
+                        embeddings_batch = get_batch_processor().process_chunks(chunk_batch, doc_id)
+                        all_embeddings.extend(embeddings_batch)
+                        # Clean up after each batch
+                        gc.collect()
+                    
+                    embeddings = all_embeddings
                     print(f"[{doc_id}] Generated {len(embeddings)} embeddings")
                     
-                    # Add to vector store
+                    # Add to vector store in smaller batches
                     vectors = [e.embedding for e in embeddings]
                     metadatas = [
                         {
@@ -320,16 +342,27 @@ async def upload_document(
                             "filename": file.filename,
                             "chunk_id": c.chunk_id,
                             "page": c.page_number,
-                            "text": c.text[:500],
+                            "text": c.text[:200],  # Limit text length further
                         }
                         for c in chunks
                     ]
-                    get_store().add(vectors, metadatas)
+                    
+                    # Add in batches to vector store
+                    store = get_store()
+                    batch_add_size = 20
+                    for i in range(0, len(vectors), batch_add_size):
+                        store.add(
+                            vectors[i:i + batch_add_size],
+                            metadatas[i:i + batch_add_size]
+                        )
+                        gc.collect()
+                    
                     print(f"[{doc_id}] Added to vector store")
                 except Exception as e:
                     print(f"[{doc_id}] Embedding error: {e}")
                     traceback.print_exc()
                     embeddings = []
+                    gc.collect()
                 
                 # Update registry
                 doc_artifacts = DocumentArtifacts(
@@ -340,12 +373,17 @@ async def upload_document(
                     embeddings=embeddings
                 )
                 document_registry[doc_id] = doc_artifacts
+                
+                # Final cleanup
+                gc.collect()
                 print(f"[{doc_id}] Processing complete")
                 
             except Exception as e:
                 import traceback
+                import gc
                 print(f"[{doc_id}] Processing error: {e}")
                 traceback.print_exc()
+                gc.collect()
         
         # Start background processing
         import threading
