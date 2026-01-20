@@ -68,6 +68,7 @@ if allowed_origins == ["*"]:
         allow_credentials=False,  # Can't use credentials with wildcard
         allow_methods=["*"],
         allow_headers=["*"],
+        max_age=3600,  # Cache preflight requests for 1 hour
     )
 else:
     app.add_middleware(
