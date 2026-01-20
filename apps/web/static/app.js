@@ -77,7 +77,15 @@ async function uploadFile(file) {
         progressText.textContent = 'Processing...';
         
         if (!response.ok) {
-            throw new Error(`Upload failed: ${response.statusText}`);
+            // Try to get error details from response
+            let errorDetail = response.statusText;
+            try {
+                const errorData = await response.json();
+                errorDetail = errorData.detail || errorData.message || errorDetail;
+            } catch (e) {
+                // If response is not JSON, use status text
+            }
+            throw new Error(`Upload failed: ${errorDetail}`);
         }
         
         const result = await response.json();

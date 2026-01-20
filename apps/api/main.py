@@ -268,30 +268,51 @@ async def upload_document(
         doc_type=doc_type
     )
     
+    # Store basic document info immediately
+    document_registry[doc_id] = DocumentArtifacts(
+        raw_doc=raw_doc,
+        pages=[],
+        blocks=[],
+        chunks=[],
+        embeddings=[]
+    )
+    
     # Process document in background to avoid timeout
     def process_document():
         try:
+            import traceback
+            print(f"Starting background processing for {doc_id}")
+            
             processed = get_document_processor().process(raw_doc)
             pages = processed["pages"]
             blocks = processed["blocks"]
             chunks = processed["chunks"]
             
-            # Generate embeddings (batch)
-            embeddings = get_batch_processor().process_chunks(chunks, doc_id)
+            print(f"Processed {len(pages)} pages, {len(chunks)} chunks for {doc_id}")
             
-            # Add to vector store
-            vectors = [e.embedding for e in embeddings]
-            metadatas = [
-                {
-                    "doc_id": doc_id,
-                    "filename": file.filename,
-                    "chunk_id": c.chunk_id,
-                    "page": c.page_number,
-                    "text": c.text,
-                }
-                for c in chunks
-            ]
-            get_store().add(vectors, metadatas)
+            # Generate embeddings (batch)
+            try:
+                embeddings = get_batch_processor().process_chunks(chunks, doc_id)
+                print(f"Generated {len(embeddings)} embeddings for {doc_id}")
+                
+                # Add to vector store
+                vectors = [e.embedding for e in embeddings]
+                metadatas = [
+                    {
+                        "doc_id": doc_id,
+                        "filename": file.filename,
+                        "chunk_id": c.chunk_id,
+                        "page": c.page_number,
+                        "text": c.text[:500],  # Limit text length for metadata
+                    }
+                    for c in chunks
+                ]
+                get_store().add(vectors, metadatas)
+                print(f"Added to vector store for {doc_id}")
+            except Exception as e:
+                print(f"Embedding/vector store error for {doc_id}: {e}")
+                traceback.print_exc()
+                embeddings = []
             
             # Create DocumentArtifacts
             doc_artifacts = DocumentArtifacts(
@@ -302,17 +323,13 @@ async def upload_document(
                 embeddings=embeddings
             )
             document_registry[doc_id] = doc_artifacts
+            print(f"Completed processing for {doc_id}")
             
-            # Extract tables if PDF
-            if doc_type == DocumentType.PDF:
-                try:
-                    tables_data = extract_tables_from_pdf(str(file_path))
-                    # Store tables count in registry if needed
-                except Exception as e:
-                    print(f"Table extraction error: {e}")
         except Exception as e:
+            import traceback
             print(f"Background processing error for {doc_id}: {e}")
-            # Store error state
+            traceback.print_exc()
+            # Keep basic document info even if processing fails
             document_registry[doc_id] = DocumentArtifacts(
                 raw_doc=raw_doc,
                 pages=[],
@@ -323,15 +340,14 @@ async def upload_document(
     
     # Always process in background to prevent timeout
     import threading
-    thread = threading.Thread(target=process_document)
-    thread.daemon = True
+    thread = threading.Thread(target=process_document, daemon=True)
     thread.start()
     
     # Also add to FastAPI background tasks if available
     if background_tasks:
         background_tasks.add_task(process_document)
     
-    # Return immediately
+    # Return immediately - file is saved, processing happens in background
     return {
         "doc_id": doc_id,
         "status": "uploaded",
