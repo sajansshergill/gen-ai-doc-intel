@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 class BatchEmbeddingProcessor:
     """Process chunks in batches to create embeddings."""
     
-    def __init__(self, batch_size: int = 32):
+    def __init__(self, batch_size: int = 8):  # Smaller default for free tier
         self.batch_size = batch_size
         self.embedder: Optional[Any] = None
     
