@@ -64,31 +64,57 @@ async function uploadFile(file) {
     progressContainer.style.display = 'block';
     uploadResult.innerHTML = '';
     
+    // Log for debugging
+    console.log('Starting upload...');
+    console.log('API_BASE:', API_BASE);
+    console.log('File:', file.name, file.size, 'bytes');
+    
     try {
         progressText.textContent = 'Uploading...';
         progressFill.style.width = '30%';
         
-        const response = await fetch(`${API_BASE}/v1/documents`, {
+        const uploadUrl = `${API_BASE}/v1/documents`;
+        console.log('Upload URL:', uploadUrl);
+        
+        const response = await fetch(uploadUrl, {
             method: 'POST',
-            body: formData
+            body: formData,
+            // Don't set Content-Type - let browser set it with boundary
         });
+        
+        console.log('Response status:', response.status, response.statusText);
+        console.log('Response headers:', Object.fromEntries(response.headers.entries()));
         
         progressFill.style.width = '70%';
         progressText.textContent = 'Processing...';
         
         if (!response.ok) {
             // Try to get error details from response
-            let errorDetail = response.statusText;
+            let errorDetail = `${response.status} ${response.statusText}`;
+            let errorBody = '';
             try {
-                const errorData = await response.json();
-                errorDetail = errorData.detail || errorData.message || errorDetail;
+                const contentType = response.headers.get('content-type');
+                if (contentType && contentType.includes('application/json')) {
+                    const errorData = await response.json();
+                    errorDetail = errorData.detail || errorData.message || errorDetail;
+                    errorBody = JSON.stringify(errorData, null, 2);
+                } else {
+                    errorBody = await response.text();
+                    if (errorBody) {
+                        errorDetail = errorBody.substring(0, 200);
+                    }
+                }
             } catch (e) {
-                // If response is not JSON, use status text
+                console.error('Error reading response:', e);
             }
+            
+            console.error('Upload failed:', errorDetail);
+            console.error('Response body:', errorBody);
             throw new Error(`Upload failed: ${errorDetail}`);
         }
         
         const result = await response.json();
+        console.log('Upload success:', result);
         
         progressFill.style.width = '100%';
         progressText.textContent = 'Complete!';
@@ -99,32 +125,60 @@ async function uploadFile(file) {
         }, 1000);
         
         uploadResult.innerHTML = `
-            <h4>✅ Document Uploaded Successfully</h4>
-            <p><strong>Document ID:</strong> ${result.doc_id}</p>
-            <p><strong>Filename:</strong> ${result.filename}</p>
-            <p><strong>Pages:</strong> ${result.pages} | <strong>Chunks:</strong> ${result.chunks} | <strong>Tables:</strong> ${result.tables || 0}</p>
-            <p><strong>Method:</strong> ${result.extraction_method}</p>
+            <div style="background: #e8f5e9; border-left: 4px solid #4caf50; padding: 1rem; border-radius: 8px;">
+                <h4 style="color: #2e7d32; margin: 0 0 0.5rem 0;">✅ Document Uploaded Successfully</h4>
+                <p style="margin: 0.25rem 0;"><strong>Document ID:</strong> ${result.doc_id}</p>
+                <p style="margin: 0.25rem 0;"><strong>Filename:</strong> ${result.filename}</p>
+                <p style="margin: 0.25rem 0;"><strong>Status:</strong> ${result.status}</p>
+                <p style="margin: 0.25rem 0;"><strong>Message:</strong> ${result.message || 'Processing in background...'}</p>
+            </div>
         `;
         
         loadDocuments();
         loadStats();
     } catch (error) {
         progressContainer.style.display = 'none';
-        console.error('Upload error:', error);
+        console.error('Upload error details:', error);
+        console.error('Error name:', error.name);
+        console.error('Error message:', error.message);
+        console.error('Error stack:', error.stack);
+        
         const errorMsg = error.message || 'Unknown error';
-        const isApiUnavailable = errorMsg.includes('Failed to fetch') || errorMsg.includes('NetworkError') || errorMsg.includes('not available');
+        const isNetworkError = errorMsg.includes('Failed to fetch') || 
+                               errorMsg.includes('NetworkError') || 
+                               errorMsg.includes('Network request failed') ||
+                               error.name === 'TypeError' ||
+                               error.name === 'NetworkError';
+        
+        let diagnosticInfo = '';
+        if (isNetworkError) {
+            diagnosticInfo = `
+                <div style="margin-top: 1rem; padding: 0.75rem; background: #fff3cd; border-radius: 4px; font-size: 0.85rem;">
+                    <strong>🔍 Diagnostic Info:</strong><br>
+                    API URL: ${API_BASE}<br>
+                    Error Type: ${error.name}<br>
+                    <br>
+                    <strong>Possible causes:</strong><br>
+                    • Backend not running (check Render dashboard)<br>
+                    • CORS issue (backend should allow GitHub Pages origin)<br>
+                    • Network connectivity issue<br>
+                    <br>
+                    <strong>Test backend:</strong><br>
+                    <code style="background: #f5f5f5; padding: 0.25rem 0.5rem; border-radius: 3px;">
+                        curl ${API_BASE}/health
+                    </code>
+                </div>
+            `;
+        }
         
         uploadResult.innerHTML = `
-            <div style="background: #ffebee; border-left-color: #ea4335; padding: 1rem; border-radius: 8px; border-left: 4px solid #ea4335;">
+            <div style="background: #ffebee; border-left: 4px solid #ea4335; padding: 1rem; border-radius: 8px;">
                 <h4 style="color: #ea4335; margin: 0 0 0.5rem 0;">❌ Upload Failed</h4>
-                <p style="margin: 0 0 0.5rem 0;">${errorMsg}</p>
-                ${isApiUnavailable ? `
-                    <p style="margin: 0.5rem 0 0 0; font-size: 0.9rem; color: #666;">
-                        <strong>Backend API not available.</strong><br>
-                        Current API URL: ${API_BASE}<br>
-                        Please deploy the backend API or configure API_BASE_URL.
-                    </p>
-                ` : ''}
+                <p style="margin: 0 0 0.5rem 0; font-weight: 500;">${errorMsg}</p>
+                <p style="margin: 0; font-size: 0.85rem; color: #666;">
+                    Check browser console (F12) for detailed error information.
+                </p>
+                ${diagnosticInfo}
             </div>
         `;
     }
