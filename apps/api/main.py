@@ -239,28 +239,53 @@ async def upload_document(
     Upload and process a document.
     Returns doc_id and status immediately, processes in background.
     """
+    doc_id = None
     try:
         # Validate filename
         if not file.filename:
+            print("[UPLOAD ERROR] No filename provided")
             raise HTTPException(status_code=400, detail="Filename is required")
         
-        doc_id = str(uuid.uuid4())
+    doc_id = str(uuid.uuid4())
         doc_type = determine_doc_type(file.filename)
         
+        print(f"[{doc_id}] Upload started: {file.filename}, type: {doc_type}")
+        
         if doc_type == DocumentType.UNKNOWN:
+            print(f"[{doc_id}] ERROR: Unsupported file type: {file.filename}")
             raise HTTPException(status_code=400, detail=f"Unsupported file type: {file.filename}")
+        
+        # Ensure upload directory exists
+        UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
         
         # Save file FIRST - this is the critical part
         file_path = UPLOAD_DIR / f"{doc_id}_{file.filename}"
-        content = await file.read()
-        file_size = len(content)
+        
+        # Read file content with error handling
+        try:
+            content = await file.read()
+            file_size = len(content)
+            print(f"[{doc_id}] File read: {file_size} bytes")
+        except Exception as e:
+            print(f"[{doc_id}] ERROR reading file: {str(e)}")
+            raise HTTPException(status_code=400, detail=f"Failed to read file: {str(e)}")
+        
+        if file_size == 0:
+            print(f"[{doc_id}] ERROR: Empty file")
+            raise HTTPException(status_code=400, detail="File is empty")
         
         if file_size > 10 * 1024 * 1024:  # 10MB limit
+            print(f"[{doc_id}] ERROR: File too large: {file_size} bytes")
             raise HTTPException(status_code=400, detail="File size exceeds 10MB limit")
         
-        # Write file immediately
-        with open(file_path, "wb") as f:
-            f.write(content)
+        # Write file immediately with error handling
+        try:
+            with open(file_path, "wb") as f:
+                f.write(content)
+            print(f"[{doc_id}] File saved: {file_path}")
+        except Exception as e:
+            print(f"[{doc_id}] ERROR saving file: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
         
         # Create RawDoc artifact
         raw_doc = RawDoc(
@@ -394,14 +419,18 @@ async def upload_document(
             background_tasks.add_task(process_document)
         
         # Return immediately
+        print(f"[{doc_id}] Upload successful, returning response")
         return response_data
         
-    except HTTPException:
+    except HTTPException as e:
+        print(f"[UPLOAD ERROR] HTTP {e.status_code}: {e.detail}")
         raise
     except Exception as e:
         import traceback
+        error_msg = f"Upload error: {str(e)}"
+        print(f"[UPLOAD ERROR] {error_msg}")
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Upload error: {str(e)}")
+        raise HTTPException(status_code=500, detail=error_msg)
 
 
 @app.get("/v1/documents/{doc_id}")
